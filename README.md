@@ -1,6 +1,7 @@
 # picoros-usb-eth
 
-A microcontroller as an ordinary ROS 2 node, over one USB cable.
+A microcontroller as an ordinary node of a ROS 2 graph on `rmw_zenoh_cpp`,
+which micro-ROS cannot join, over the USB cable it is flashed through.
 
 The board shows up on the host as a USB Ethernet adapter (CDC-NCM, a standard
 USB class with a built-in driver on Linux, macOS and recent Windows), connects
@@ -134,22 +135,64 @@ Defaults, to change with `-D` or with `set(... CACHE ...)` before
   ignores them. Two builds of one checkout with different options overwrite
   each other's: give each its own checkout.
 
-## Pinned forks
+## Changes to zenoh-pico and Pico-ROS
 
 `third_party/` pins zenoh-pico 1.8.0, the Zenoh version Lyrical's
 `rmw_zenoh_cpp` bundles, and Pico-ROS, both from forks on the branch
-`picoros-usb-eth`, until their fixes are merged upstream:
+`picoros-usb-eth`, until their changes are merged upstream.
 
-* zenoh-pico decoded a batch holding a best-effort frame followed by a reliable
-  one as a single frame, and its read task stopped. `rmw_zenohd` sends such
+### zenoh-pico
+
+[robotcopper/zenoh-pico](https://github.com/robotcopper/zenoh-pico/tree/picoros-usb-eth),
+three fixes on 1.8.0:
+
+* A batch holding a best-effort frame followed by a reliable one was decoded
+  as a single frame, and the read task stopped. `rmw_zenohd` sends such
   batches under load.
-* zenoh-pico called a query reply callback after releasing its lock.
-* zenoh-pico's `rpi_pico` network layer did not build a TCP link without the
-  Pico W's Wi-Fi chip.
-* Pico-ROS stamped the `rmw_zenoh_cpp` attachment with the time since boot
-  instead of the wall clock.
-* Pico-ROS resolved `~` in service names but not in topic names.
-* Pico-ROS's type generator could give a service the hash of its request.
+* A query reply callback was called after the session's lock was released.
+* The `rpi_pico` network layer did not build a TCP link without the Pico W's
+  Wi-Fi chip.
+
+### Pico-ROS
+
+[robotcopper/Pico-ROS-software](https://github.com/robotcopper/Pico-ROS-software/tree/picoros-usb-eth),
+on top of upstream `master`.
+
+Fixes:
+
+* A publisher whose options were left zero-initialised published on zenoh's
+  control priority instead of the default one.
+* Every publisher, subscriber and service had entity id 11 in its liveliness
+  token, so the ROS graph counted two entities of one kind on one topic once.
+* Service names were always prefixed with the node's name, and `~` was not
+  resolved in topic names. Both now follow ROS name resolution in the root
+  namespace: `~/name` is private to the node, any other name is used as is.
+* Attachments carried the time since boot instead of the wall clock.
+* A service client sent every request with a zero GID and sequence number 1,
+  while `rmw_zenoh_cpp` matches replies to requests by both.
+* The type generator could give a service the hash of its request.
+
+Additions:
+
+* Per-entity QoS: reliability, durability, history and depth, advertised in the
+  liveliness token in `rmw_zenoh_cpp`'s format. A zero-initialised profile
+  gives the token Pico-ROS used before.
+* Transient local publishers, declared as zenoh-pico advanced publishers with
+  the options `rmw_zenoh_cpp` uses.
+* Sample metadata, through a subscriber's `info_callback` and a service
+  client's `reply_info`: source timestamp, sequence number and Zenoh
+  timestamp. A payload received in one piece is handed over in place instead of
+  being copied.
+
+From [Pico-ROS PR #25](https://github.com/Pico-ROS/Pico-ROS-software/pull/25)
+by Richard Osterloh, still open upstream:
+
+* String and string-sequence decoding is bounded.
+* Service replies echo the request's rmw identity.
+* `z_malloc` is checked in the receive paths and when a client starts.
+
+The fork also fetches its own zenoh-pico submodule over https, so a recursive
+clone needs no SSH key.
 
 ## Adding a platform
 
