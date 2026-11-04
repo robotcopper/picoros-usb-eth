@@ -121,6 +121,14 @@ Defaults, to change with `-D` or with `set(... CACHE ...)` before
 * The board accepts one datagram per USB transfer. Otherwise Linux's
   `cdc_ncm` holds each frame for up to 1.2 ms, waiting for others to batch
   with it.
+* The router's tuning options do not reach the board. zenoh-pico 1.8.0
+  implements neither the `lowlatency` transport, nor QoS, nor compression on a
+  unicast link, and these are negotiated when a session opens: the board's link
+  stays a plain transport whatever the router's configuration. The router
+  batches only under back-pressure, and shared memory never leaves the host.
+  Between host nodes, once each of them enables it, `lowlatency` also drops
+  fragmentation: no message larger than a batch, 65535 bytes by default, gets
+  through.
 * zenoh-pico writes `include/zenoh-pico/config.h` into its own source tree at
   configure time, so its submodule always shows modified files; `.gitmodules`
   ignores them. Two builds of one checkout with different options overwrite
